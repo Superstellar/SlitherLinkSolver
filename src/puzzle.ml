@@ -3,137 +3,103 @@ let z3ctx = Constraint.z3ctx
 let solver = Constraint.solver
 
 
-let r_box0 =
+let r_box_pos = 
   let open Constraint in
-  make_rule [ varx; vary; varz; varw ]
-    (Z3.Boolean.mk_implies z3ctx
-      (Z3.FuncDecl.apply box0 [ varx; vary; varz; varw ])
-      (num_among_edge_is_colored 0 [ varx; vary; varz; varw ]))
+  List.init height (fun row ->
+    List.init width (fun col ->
+      let pos = (row, col) in
+      let box = pos |> box_expr in
+      [
+        (Z3.Boolean.mk_eq z3ctx 
+          (Z3.FuncDecl.apply box_fun_up [ box ])
+          (pos |> pos_up |> box_expr));
+        (Z3.Boolean.mk_eq z3ctx 
+          (Z3.FuncDecl.apply box_fun_left [ box ])
+          (pos |> pos_left |> box_expr));
+      ]
+      )) 
+  |> List.concat |> List.concat
 
-let r_box1 =
+let r_boundaries =
   let open Constraint in
-  make_rule [ varx; vary; varz; varw ]
-    (Z3.Boolean.mk_implies z3ctx
-      (Z3.FuncDecl.apply box1 [ varx; vary; varz; varw ])
-      (num_among_edge_is_colored 1 [ varx; vary; varz; varw ]))
+  List.init height (fun row ->
+    List.init width (fun col ->
+      if (row = 0) || (row = height - 1) || (col = 0) || (col = width - 1)
+        then Some ((row, col) |> box_expr |> color_of |> Z3.Boolean.mk_not z3ctx)
+        else None)) 
+  |> List.concat
+  |> List.filter_map (fun e -> e)
 
-let r_box2 =
+let r_box box_num_list =
   let open Constraint in
-  make_rule [ varx; vary; varz; varw ]
-    (Z3.Boolean.mk_implies z3ctx
-      (Z3.FuncDecl.apply box2 [ varx; vary; varz; varw ])
-      (num_among_edge_is_colored 2 [ varx; vary; varz; varw ]))
+  let box_expr_to_i3 e1 e2 = 
+    Z3.Boolean.mk_ite z3ctx (diff_colored e1 e2) i3.(1) i3.(0) in
+  let i3_sum_of_four e1 e2 e3 e4 =
+    (let mk_add = Z3.BitVector.mk_add z3ctx in
+    mk_add (mk_add (mk_add e1 e2) e3) e4) in
+  List.map (fun (row, col, box_num) ->
+    let pos = (row+1, col+1) in
+    let box = pos |> box_expr in
+    let actual_number = i3_sum_of_four 
+      (box_expr_to_i3 box (pos |> pos_up |> box_expr))
+      (box_expr_to_i3 box (pos |> pos_down |> box_expr))
+      (box_expr_to_i3 box (pos |> pos_left |> box_expr))
+      (box_expr_to_i3 box (pos |> pos_right |> box_expr)) in
+    let expected_number = i3.(box_num) in
+    Z3.Boolean.mk_eq z3ctx actual_number expected_number
+  ) box_num_list
 
-let r_box3 =
+let r_connect0 =
   let open Constraint in
-  make_rule [ varx; vary; varz; varw ]
-    (Z3.Boolean.mk_implies z3ctx
-      (Z3.FuncDecl.apply box3 [ varx; vary; varz; varw ])
-      (num_among_edge_is_colored 3 [ varx; vary; varz; varw ]))
+  let box_numeral_max = 
+    Z3.BitVector.mk_numeral z3ctx (("0b" ^ (String.make box_bits '1')) |> int_of_string |> string_of_int) box_bits in
+  let box_num_on_color e1 e2 = 
+    Z3.Boolean.mk_ite z3ctx (diff_colored e1 e2) box_numeral_max (conn_of e2) in
+  let min_box e1 e2 = 
+    Z3.Boolean.mk_ite z3ctx (Z3.BitVector.mk_ult z3ctx e1 e2) e1 e2 in
+  let min_of_five e1 e2 e3 e4 e5 =
+    min_box (min_box (min_box (min_box e1 e2) e3) e4) e5 in
+  make_rule [ varx; varup; vardown; varleft; varright ]
+  (Z3.Boolean.mk_implies z3ctx
+    (Z3.Boolean.mk_and z3ctx 
+      [
+        Z3.Boolean.mk_eq z3ctx (box_up_of varx) varup;
+        Z3.Boolean.mk_eq z3ctx (box_up_of vardown) varx;
+        Z3.Boolean.mk_eq z3ctx (box_left_of varx) varleft;
+        Z3.Boolean.mk_eq z3ctx (box_left_of varright) varx;
+      ])
+    (Z3.Boolean.mk_eq z3ctx
+      (conn_of varx)
+      (min_of_five
+        varx
+        (box_num_on_color varx varup)
+        (box_num_on_color varx vardown)
+        (box_num_on_color varx varleft)
+        (box_num_on_color varx varright))))
 
-let r_corner0 = 
+let r_connect1 =
   let open Constraint in
-  make_rule [ varx; vary; varz; varw ]
-    (Z3.Boolean.mk_implies z3ctx
-      (Z3.FuncDecl.apply corner [ varx; vary; varz; varw ])
-      (Z3.Boolean.mk_or z3ctx 
-        [
-          (num_among_edge_is_colored 2 [ varx; vary; varz; varw ]);
-          (num_among_edge_is_colored 0 [ varx; vary; varz; varw ]);
-        ]))
-
-let r_path0 = 
-  let open Constraint in
+  let max_box_expr = box_expr (height - 1, width - 1) in
   make_rule [ varx; vary ]
-    (Z3.Boolean.mk_implies z3ctx
-      (Z3.Boolean.mk_and z3ctx
-        [
-          Z3.FuncDecl.apply colored [ varx ];
-          Z3.FuncDecl.apply colored [ vary ];
-          Z3.FuncDecl.apply adjacent [ varx; vary ];
-        ])
-      (Z3.FuncDecl.apply path [ varx; vary ]))
+  (Z3.Boolean.mk_implies z3ctx
+    (Z3.Boolean.mk_and z3ctx [
+      Z3.BitVector.mk_ule z3ctx varx max_box_expr;
+      Z3.BitVector.mk_ule z3ctx vary max_box_expr; ])
+    (Z3.Boolean.mk_iff z3ctx
+      (Z3.Boolean.mk_not z3ctx (diff_colored varx vary))
+      (Z3.Boolean.mk_eq z3ctx (conn_of varx) (conn_of vary)))
+  )
 
-let r_path1 = 
-  let open Constraint in
-  make_rule [ varx; vary; varz ]
-    (Z3.Boolean.mk_implies z3ctx
-      (Z3.Boolean.mk_and z3ctx
-        [
-          Z3.FuncDecl.apply path [ varx; vary ];
-          Z3.FuncDecl.apply path [ vary; varz ];
-        ])
-    (Z3.FuncDecl.apply path [ varx; varz ]))
-
-let _ =
-  Z3.Symbol.mk_string z3ctx "r_box0"
-  |> Option.some
-  |> Z3.Fixedpoint.add_rule solver r_box0;
-  Z3.Symbol.mk_string z3ctx "r_box1"
-  |> Option.some
-  |> Z3.Fixedpoint.add_rule solver r_box1;
-  Z3.Symbol.mk_string z3ctx "r_box2"
-  |> Option.some
-  |> Z3.Fixedpoint.add_rule solver r_box2;
-  Z3.Symbol.mk_string z3ctx "r_box3"
-  |> Option.some
-  |> Z3.Fixedpoint.add_rule solver r_box3;
-  Z3.Symbol.mk_string z3ctx "r_corner0"
-  |> Option.some
-  |> Z3.Fixedpoint.add_rule solver r_corner0;
-  Z3.Symbol.mk_string z3ctx "r_path0"
-  |> Option.some
-  |> Z3.Fixedpoint.add_rule solver r_path0;
-  Z3.Symbol.mk_string z3ctx "r_path1"
-  |> Option.some
-  |> Z3.Fixedpoint.add_rule solver r_path1
-
-let edge_to_index height width is_hor row_num col_num =
-  if is_hor
-    then (row_num + 1) * (width + 2) + (col_num + 1)
-    else (width + 2) * (height + 1) + (row_num + 1) * (width + 1) + (col_num + 1)
-let index_to_edge height width index = 
-  if index < (width + 2) * (height + 1) then
-    (true, index / (width + 2) - 1, index mod (width + 2) - 1)
-  else 
-    let index = index - (width + 2) * (height + 1) in
-    (false, index / (width + 1) - 1, index mod (width + 1) - 1)
-
-let setup_grid solver height width box_num_list = 
-  let add_fact = Z3.Fixedpoint.add_fact solver in
-  let hor_index = edge_to_index height width true in
-  let ver_index = edge_to_index height width false in
-  let _ = List.init (height + 1) (fun row_num -> List.init (width + 1) (fun col_num -> 
-    let e1 = hor_index row_num col_num in
-    let e2 = ver_index row_num col_num in
-    let e3 = hor_index row_num (col_num-1) in
-    let e4 = ver_index (row_num-1) col_num in
-    add_fact Constraint.corner [ e1; e2; e3; e4 ];
-    add_fact Constraint.adjacent [ e1; e2 ];
-    add_fact Constraint.adjacent [ e1; e3 ];
-    add_fact Constraint.adjacent [ e1; e4 ];
-    add_fact Constraint.adjacent [ e2; e3 ];
-    add_fact Constraint.adjacent [ e2; e4 ];
-    add_fact Constraint.adjacent [ e3; e4 ];
-    add_fact Constraint.adjacent [ e4; e3 ];
-    add_fact Constraint.adjacent [ e4; e2 ];
-    add_fact Constraint.adjacent [ e3; e2 ];
-    add_fact Constraint.adjacent [ e4; e1 ];
-    add_fact Constraint.adjacent [ e3; e1 ];
-    add_fact Constraint.adjacent [ e2; e1 ])) in
-  List.iter (fun (row_num, col_num, box_num) ->
-    assert ((box_num >= 0) && (box_num < 4));
-    let box_funcdecl_list = [| Constraint.box0; Constraint.box1; Constraint.box2; Constraint.box3 |] in
-    add_fact box_funcdecl_list.(box_num) [
-      hor_index row_num col_num; 
-      ver_index row_num col_num;
-      hor_index (row_num+1) col_num;
-      ver_index row_num (col_num+1);] ) box_num_list
-
-let question = 
-  let open Constraint in
-  make_rule [ varx; vary ]
-    (Z3.Boolean.mk_implies z3ctx
-      (Z3.Boolean.mk_and z3ctx
-        [ Z3.FuncDecl.apply colored [ varx ]; Z3.FuncDecl.apply colored [ vary ] ])
-      (Z3.FuncDecl.apply path [ varx; vary ]))
+let add_rules box_num_list = 
+  let mk_boolean = Z3.Boolean.mk_const_s z3ctx in
+  let mk_boolean_list s len = List.init len (fun i -> mk_boolean (Format.sprintf "%s_%d" s i)) in
+  (* Z3.Solver.assert_and_track_l solver r_box_pos (mk_boolean_list "R_pos" (List.length r_box_pos)); *)
+  (* Z3.Solver.assert_and_track_l solver r_boundaries (mk_boolean_list "R_bd" (List.length r_boundaries)); *)
+  (* Z3.Solver.assert_and_track_l solver (r_box box_num_list) (mk_boolean_list "R_box" (List.length box_num_list)); *)
+  (* Z3.Solver.assert_and_track_l solver [ r_connect0; r_connect1 ] (mk_boolean_list "R_con" 2); *)
+  Z3.Solver.add solver r_box_pos;
+  Z3.Solver.add solver r_boundaries;
+  Z3.Solver.add solver (r_box box_num_list);
+  (* Format.printf "r_connect0:\n%s\nr_connect1:\n%s\n" (Z3.Expr.to_string r_connect0) (Z3.Expr.to_string r_connect1); *)
+  Z3.Solver.add solver [ r_connect0; r_connect1 ];
+  (* Z3.Solver.add solver [ r_connect0; r_connect1 ]; *)
