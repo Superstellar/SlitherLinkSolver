@@ -42,17 +42,6 @@ let main argv =
         if (Z3.Model.eval model (Constraint.color_of_pos (row, col)) false |> Option.get |> Z3.Expr.to_string |> bool_of_string)
           then F.printf "O" else F.printf "-"
       ) in F.printf "\n";
-    ) in 
-    let _ = List.init (Constraint.height) (fun row ->
-      let _ = List.init (Constraint.width) (fun col ->
-        let _ = (Z3.Model.eval model ((row, col) |> Constraint.box_expr |> (fun e -> [e]) |> Z3.FuncDecl.apply Constraint.connected) false 
-          |> Option.get 
-          |> Z3.Expr.to_string 
-          |> String.mapi (fun i c -> if i=0 then '0' else c)
-          |> int_of_string
-          |> (fun ind -> (ind / Constraint.width, ind mod Constraint.width))
-          |> (fun (r, c) -> F.printf "(%d,%d) " r c)) in ()
-      ) in F.printf "\n";
     ) in ()
   | Z3.Solver.UNKNOWN ->
     F.printf "Unknown\n"
