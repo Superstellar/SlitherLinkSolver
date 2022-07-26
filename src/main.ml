@@ -21,33 +21,39 @@ let rec read_chan chan lines =
   try read_chan chan (input_line chan :: lines)
   with End_of_file -> close_in chan; List.rev lines
 
-let main argv = 
-  if Array.length argv <> 2 then (
-    prerr_endline "solver: You must specify one input file";
-    prerr_endline "Usage: solver [ filename of input ]";
-    exit 1);
-  F.printf "flag 1\n";
-  let (_height, _width, box_num_list) = read_chan (open_in argv.(1)) [] |> read_input in
-  F.printf "flag 2\n";
-  Puzzle.add_rules box_num_list;
-  F.printf "flag 3\n";
+let rec check i = 
+  if i = 0 then false else
   let status = Z3.Solver.check solver [] in
-  F.printf "flag 4\n";
   match status with
   | Z3.Solver.SATISFIABLE ->
     let model = solver |> Z3.Solver.get_model |> Option.get in
     F.printf "Can solve\n";
     let _ = List.init (Constraint.height) (fun row ->
       let _ = List.init (Constraint.width) (fun col ->
-        if (Z3.Model.eval model (Constraint.color_of_pos (row, col)) false |> Option.get |> Z3.Expr.to_string |> bool_of_string)
+        let pos = Constraint.pos_from_rc row col in
+        if (Z3.Model.eval model (Constraint.color_of_pos pos) false |> Option.get |> Z3.Expr.to_string |> bool_of_string)
           then F.printf "O" else F.printf "-"
       ) in F.printf "\n";
-    ) in ()
+    ) in true
   | Z3.Solver.UNKNOWN ->
-    F.printf "Unknown\n"
+    F.printf "Unknown\n";
+    false
   | Z3.Solver.UNSATISFIABLE ->
-    F.printf "Cannot solve\n";
-    let unsat_core = Z3.Solver.get_unsat_core Constraint.solver in
-    List.iteri (fun i e -> F.printf "Assertion %3d:\n%s\n" i (e |> Z3.Expr.ast_of_expr |> Z3.AST.to_string)) unsat_core
+    (* F.printf "Cannot solve\n"; *)
+    (* let unsat_core = Z3.Solver.get_unsat_core Constraint.solver in *)
+    (* List.iteri (fun i e -> F.printf "Assertion %3d:\n%s\n" i (e |> Z3.Expr.ast_of_expr |> Z3.AST.to_string)) unsat_core in *)
+    Puzzle.modify_rule i;
+    check (i-1)
 
+
+let main argv = 
+  if Array.length argv <> 2 then (
+    prerr_endline "solver: You must specify one input file";
+    prerr_endline "Usage: solver [ filename of input ]";
+    exit 1);
+  let (_height, _width, box_num_list) = read_chan (open_in argv.(1)) [] |> read_input in
+  Puzzle.add_rules box_num_list;
+  if (check (Constraint.box_total - 1)) then () else F.printf "Unsolvable\n"
+
+  
 let _ = main Sys.argv
