@@ -2,20 +2,20 @@ module F = Format
 
 let solver = Constraint.solver
 
-let read_box_num s = 
-  let r = Str.regexp {|[0-9]+|} in
-  let s1 = Str.search_forward r s 0 + 1 in
-  let row_num = s |> Str.matched_string |> int_of_string in
-  let s2 = Str.search_forward r s s1 + 1 in
-  let col_num = s |> Str.matched_string |> int_of_string in
-  let _ = Str.search_forward r s s2 + 1 in
-  let box_num = s |> Str.matched_string |> int_of_string in
-  (row_num, col_num, box_num)
+let read_box_num row s = 
+  let s = s |> String.to_seqi |> List.of_seq in
+  let f = fun (col, ch) -> (match ch with
+    | '0' -> Some (row, col, 0)
+    | '1' -> Some (row, col, 1)
+    | '2' -> Some (row, col, 2)
+    | '3' -> Some (row, col, 3)
+    | _ -> None) in
+  List.filter_map f s
 let read_input = function 
   | height :: width :: box_list -> (
     int_of_string height,
     int_of_string width,
-    List.map read_box_num box_list)
+    List.concat (List.mapi read_box_num box_list))
   | _ -> failwith "Input file is too short"
 let rec read_chan chan lines = 
   try read_chan chan (input_line chan :: lines)

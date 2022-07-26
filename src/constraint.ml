@@ -2,8 +2,8 @@ let z3ctx = Z3.mk_context [ ("model", "true"); ("unsat_core", "true") ]
 
 let solver = Z3.Solver.mk_solver z3ctx None
 
-let height = 9
-let width = 9
+let height = 30
+let width = 25
 
 let box_total = width * height
 let pos_row pos = pos / width
