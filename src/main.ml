@@ -25,8 +25,8 @@ let print_model (ctx:context) model =
   let _ = List.init ctx.height (fun row ->
     let _ = List.init ctx.width (fun col ->
       let pos = Constraint.pos_from_rc ctx row col in
-      if (Z3.Model.eval model ctx.var.(pos) false |> Option.get |> Z3.Expr.to_string |> bool_of_string)
-        then F.printf "O" else F.printf "-"
+      let color = Z3.Model.eval model ctx.color_of.(pos) false |> Option.get |> Z3.Expr.to_string |> bool_of_string in
+      if color then F.printf "O" else F.printf "-"
     ) in F.printf "\n";
   ) in ()
 let check (ctx:context) = 

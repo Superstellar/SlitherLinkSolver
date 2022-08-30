@@ -4,8 +4,10 @@ type context = {
   height: int; 
   width: int; 
   box_total: int;
+  box_sort: Z3.Sort.sort;
   boolean_sort: Z3.Sort.sort;
-  var: Z3.Expr.expr array;
+  color_of: Z3.Expr.expr array;
+  dist_of: Z3.Expr.expr array;
 }
 
 let mk_context height width = 
@@ -13,21 +15,28 @@ let mk_context height width =
   let solver = Z3.Solver.mk_solver z3ctx None in
   let height = height + 2 in
   let width = width + 2 in
+  let box_total = width * height in
   let puzzle_box_str = 
     List.init height (fun row ->
       List.init width (fun col -> 
         Format.sprintf "box_%d_%d" row col))
-    |> List.concat 
-    |> Array.of_list in
-  let var = Array.map (Z3.Boolean.mk_const_s z3ctx) puzzle_box_str in
+    |> List.concat in
+  let box_sort = Z3.Enumeration.mk_sort_s z3ctx "Box" puzzle_box_str in
+  let boolean_sort = Z3.Boolean.mk_sort z3ctx in
+  let color = Z3.FuncDecl.mk_func_decl_s z3ctx "Color" [box_sort] boolean_sort in
+  let color_of = Array.init box_total (fun i -> Z3.FuncDecl.apply color [Z3.Enumeration.get_const box_sort i]) in
+  let dist = Z3.FuncDecl.mk_func_decl_s z3ctx "Dist" [box_sort] (Z3.Arithmetic.Integer.mk_sort z3ctx) in
+  let dist_of = Array.init box_total (fun i -> Z3.FuncDecl.apply dist [Z3.Enumeration.get_const box_sort i]) in
   {
     z3ctx = z3ctx;
     solver = solver;
     height = height;
     width = width;
-    box_total = width * height;
-    boolean_sort = Z3.Boolean.mk_sort z3ctx;
-    var = var;
+    box_total = box_total;
+    box_sort = box_sort;
+    boolean_sort = boolean_sort;
+    color_of = color_of;
+    dist_of = dist_of;
   }
 
 (* utility functions dealing with positions *)
@@ -51,7 +60,7 @@ let mk_forall ctx vars cons =
 
 
 (* utility functions dealing with z3 colors *)
-let diff_colored ctx b1 b2 = Z3.Boolean.mk_xor ctx.z3ctx (ctx.var.(b1)) (ctx.var.(b2))
+let diff_colored ctx b1 b2 = Z3.Boolean.mk_xor ctx.z3ctx (ctx.color_of.(b1)) (ctx.color_of.(b2))
 
 let four_box_of ctx i b = 
   let b0, b1, b2, b3 = pos_adj ctx b in
@@ -69,21 +78,3 @@ let four_box_of ctx i b =
   | 2 -> o [a [y e0; y e1; n e2; n e3]; a [y e0; n e1; y e2; n e3]; a [y e0; n e1; n e2; y e3]; a [n e0; y e1; y e2; n e3]; a [n e0; y e1; n e2; y e3]; a [n e0; n e1; y e2; y e3];]
   | 3 -> o [a [y e0; y e1; y e2; n e3]; a [y e0; y e1; n e2; y e3]; a [y e0; n e1; y e2; y e3]; a [n e0; y e1; y e2; y e3];]
   | _ -> failwith "Inappropriate in-box number"
-
-(* invariant for number of box clusters without hole *)
-let get_invariant ctx = 
-  let mk_and = Z3.Boolean.mk_and ctx.z3ctx in
-  let mk_add = Z3.Arithmetic.mk_add ctx.z3ctx in
-  let mk_num = Z3.Arithmetic.Integer.mk_numeral_i ctx.z3ctx in
-  let mk_ite = Z3.Boolean.mk_ite ctx.z3ctx in
-  let ite_10 e = mk_ite e (mk_num 1) (mk_num 0) in
-  Z3.Arithmetic.mk_add 
-    ctx.z3ctx 
-    (List.init ctx.box_total (fun b -> 
-      let b_left = pos_left ctx b in
-      let b_up = pos_up ctx b in
-      let e_left = diff_colored ctx b b_left |> ite_10 in
-      let e_up = diff_colored ctx b b_up |> ite_10 in
-      let b0, b1, b2, b3 = pos_4box ctx b in
-      let is4box = mk_and [ctx.var.(b0); ctx.var.(b1); ctx.var.(b2); ctx.var.(b3)] |> ite_10 in
-      mk_ite ctx.var.(b) (mk_add [mk_num (-1); e_left; e_up; is4box]) (mk_num 0)))
