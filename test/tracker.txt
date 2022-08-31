@@ -1,0 +1,2 @@
+https://ko.puzzle-loop.com/
+Array.from(document.querySelectorAll("div.loop-task-cell")).map(a => (a.innerText)=="" ? "-" : a.innerText).join("")
