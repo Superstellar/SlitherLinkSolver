@@ -29,6 +29,7 @@ let print_model (ctx:context) model =
       if color then F.printf "O" else F.printf "-"
     ) in F.printf "\n";
   ) in ()
+
 let check (ctx:context) = 
   let status = Z3.Solver.check ctx.solver [] in
   match status with
@@ -57,6 +58,7 @@ let check (ctx:context) =
     false
 
 let main argv = 
+  let t = Sys.time() in
   if Array.length argv <> 2 then (
     prerr_endline "solver: You must specify one input file";
     prerr_endline "Usage: solver [ filename of input ]";
@@ -65,6 +67,7 @@ let main argv =
   let ctx = Constraint.mk_context height width in
   Puzzle.add_rules ctx box_num_list;
   let _ = check ctx in
+  Printf.printf "Execution time: %fs\n" (Sys.time() -. t);
   ()
 
   

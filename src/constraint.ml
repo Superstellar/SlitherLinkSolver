@@ -78,3 +78,17 @@ let four_box_of ctx i b =
   | 2 -> o [a [y e0; y e1; n e2; n e3]; a [y e0; n e1; y e2; n e3]; a [y e0; n e1; n e2; y e3]; a [n e0; y e1; y e2; n e3]; a [n e0; y e1; n e2; y e3]; a [n e0; n e1; y e2; y e3];]
   | 3 -> o [a [y e0; y e1; y e2; n e3]; a [y e0; y e1; n e2; y e3]; a [y e0; n e1; y e2; y e3]; a [n e0; y e1; y e2; y e3];]
   | _ -> failwith "Inappropriate in-box number"
+
+let get_invariant ctx = 
+  let mk_num = Z3.Arithmetic.Integer.mk_numeral_i ctx.z3ctx in
+  let mk_not = Z3.Boolean.mk_not ctx.z3ctx in
+  let mk_and = Z3.Boolean.mk_and ctx.z3ctx in
+  let mk_add = Z3.Arithmetic.mk_add ctx.z3ctx in
+  let mk_bool_int e i = Z3.Boolean.mk_ite ctx.z3ctx e (mk_num i) (mk_num 0) in
+  mk_add (
+    List.init ctx.box_total (fun pos -> 
+      let b0, b1, b2, b3 = pos_4box ctx pos in
+      [ mk_bool_int (mk_and [ ctx.color_of.(b0); mk_not ctx.color_of.(b1); mk_not ctx.color_of.(b2) ]) 1;
+        mk_bool_int (mk_and [ ctx.color_of.(b0); ctx.color_of.(b1); ctx.color_of.(b2); mk_not ctx.color_of.(b3) ]) (-1); ]
+    ) |> List.concat
+  )
