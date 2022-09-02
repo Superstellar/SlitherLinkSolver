@@ -13,6 +13,15 @@ type context = {
 let mk_context height width = 
   let z3ctx = Z3.mk_context [ ("model", "true"); ("unsat_core", "true") ] in
   let solver = Z3.Solver.mk_solver z3ctx None in
+  let params = Z3.Params.mk_params z3ctx in
+  let mk_symbols = Z3.Symbol.mk_strings z3ctx in
+  List.iter2 (Z3.Params.add_bool params)
+    (mk_symbols ["arith.nl"; "ite_extra_rules"; "randomize" ])
+    [false; true; false; ];
+  List.iter2 (Z3.Params.add_int params)
+    (mk_symbols ["arith.solver"; "restart_strategy"; ])
+    [5; 4; ];
+  Z3.Solver.set_parameters solver params;
   let height = height + 2 in
   let width = width + 2 in
   let box_total = width * height in
